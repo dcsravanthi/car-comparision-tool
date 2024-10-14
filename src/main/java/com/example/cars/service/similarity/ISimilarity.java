@@ -5,6 +5,6 @@ import java.util.List;
 
 public interface ISimilarity {
 
-    public List<Car> fetchSimilarCars(Car car);
+    public List<Car> fetchSimilarCars(String id);
 
 }

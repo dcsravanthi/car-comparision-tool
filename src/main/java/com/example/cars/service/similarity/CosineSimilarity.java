@@ -1,6 +1,7 @@
 package com.example.cars.service.similarity;
 
 import com.example.cars.model.Car;
+import com.example.cars.repo.CarRepository;
 import org.elasticsearch.index.query.functionscore.ScoreFunctionBuilders;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
@@ -9,18 +10,26 @@ import org.springframework.data.elasticsearch.client.elc.NativeQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.query.Query;
+import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 
+@Service
 public class CosineSimilarity implements ISimilarity {
 
     @Autowired
     private ElasticsearchOperations elasticsearchOperations;
+    @Autowired
+    private CarRepository carRepository;
 
     @Override
-    public List<Car> fetchSimilarCars(Car car) {
+    public List<Car> fetchSimilarCars(String id) {
+        Optional<Car> carOptional = carRepository.findById(id);
+        Car car = carOptional.orElse(null);
+        if(car == null) throw new RuntimeException("Car not found");
         // Fetch the vector for the selected car
         float[] carVector = car.getDenseVector();
         if (carVector == null) {
