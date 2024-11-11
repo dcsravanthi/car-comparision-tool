@@ -1,203 +1,280 @@
 package com.example.cars.service.search;
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import co.elastic.clients.json.JsonData;
+import com.example.cars.config.ElasticsearchConfig;
 import com.example.cars.dto.CarSearchRequest;
 import com.example.cars.model.Car;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.client.ElasticsearchClient;
-import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.index.query.BoolQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.elasticsearch.client.RestClient;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.elasticsearch.client.elc.NativeQuery;
-//import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
-import org.springframework.data.elasticsearch.core.SearchHits;
-import org.springframework.data.elasticsearch.core.query.Query;
 import org.springframework.stereotype.Service;
-//import org.springframework.data.elasticsearch.client.erhlc;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 
 @Service
 public class CarSearchServiceImpl implements ICarSearchService {
 
+
+
+    private final ElasticsearchClient elasticsearchClient;
+    private ObjectMapper objectMapper;
+
     @Autowired
-    private RestHighLevelClient restHighLevelClient;
+    public CarSearchServiceImpl(ElasticsearchClient elasticsearchClient) {
+        this.elasticsearchClient = elasticsearchClient;
+        objectMapper = new ObjectMapper();
+    }
 
     /**
      * Perform a flexible search on the Car index based on provided filters.
      *
-     * @param searchRequest The DTO containing search criteria.
+     * @param carSearchRequest The DTO containing search criteria.
      * @return SearchHits<Car> The filtered search results.
      */
-    @Autowired
-    public SearchResponse searchCars(CarSearchRequest searchRequest) {
+    @Override
+    public List<Car> searchCars(CarSearchRequest carSearchRequest) throws IOException {
+        List<Query> filters = new ArrayList<>();
 
-        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
-
-        // Add filters to the query based on provided parameters
-        if (searchRequest.getMake() != null) {
-            boolQuery.filter(QueryBuilders.termQuery("basicInfo.make", searchRequest.getMake()));
+        // Basic Info filters
+        if (carSearchRequest.getMake() != null) {
+            filters.add(Query.of(q -> q.term(t -> t.field("basicInfo.make").value(carSearchRequest.getMake()))));
         }
-        if (searchRequest.getModel() != null) {
-            boolQuery.filter(QueryBuilders.termQuery("basicInfo.model", searchRequest.getModel()));
+        if (carSearchRequest.getModel() != null) {
+            filters.add(Query.of(q -> q.term(t -> t.field("basicInfo.model").value(carSearchRequest.getModel()))));
         }
-        if (searchRequest.getYear() != null) {
-            boolQuery.filter(QueryBuilders.termQuery("basicInfo.year", searchRequest.getYear()));
+        if (carSearchRequest.getYear() != null) {
+            filters.add(Query.of(q -> q.term(t -> t.field("basicInfo.year").value(carSearchRequest.getYear()))));
         }
-        if (searchRequest.getMinPrice() != null) {
-            boolQuery.filter(QueryBuilders.rangeQuery("basicInfo.price").gte(searchRequest.getMinPrice()));
+        if (carSearchRequest.getMinPrice() != null) {
+            Query byMinPrice = RangeQuery.of(r -> r
+                    .number(n -> n
+                            .field("basicInfo.price")
+                            .gte(carSearchRequest.getMinPrice()))
+            )._toQuery();
+            filters.add(byMinPrice);
         }
-        if (searchRequest.getMaxPrice() != null) {
-            boolQuery.filter(QueryBuilders.rangeQuery("basicInfo.price").lte(searchRequest.getMaxPrice()));
+        if (carSearchRequest.getMaxPrice() != null) {
+            Query byMaxPrice = RangeQuery.of(r -> r
+                    .number(n -> n
+                            .field("basicInfo.price")
+                            .lte(carSearchRequest.getMaxPrice()))
+            )._toQuery();
+            filters.add(byMaxPrice);
         }
-
-        // Add Fuel and Efficiency filters
-        if (searchRequest.getFuelAndEfficiency() != null) {
-            CarSearchRequest.FuelAndEfficiencyDto fuelEfficiency = searchRequest.getFuelAndEfficiency();
+        // Fuel and Efficiency filters
+        if (carSearchRequest.getFuelAndEfficiency() != null) {
+            CarSearchRequest.FuelAndEfficiencyDto fuelEfficiency = carSearchRequest.getFuelAndEfficiency();
             if (fuelEfficiency.getFuelType() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("fuelAndEfficiency.fuelType", fuelEfficiency.getFuelType()));
+                filters.add(Query.of(q -> q.term(t -> t.field("fuelAndEfficiency.fuelType").value(fuelEfficiency.getFuelType()))));
             }
             if (fuelEfficiency.getMileage() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("fuelAndEfficiency.mileage").gte(fuelEfficiency.getMileage()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("fuelAndEfficiency.mileage")
+                                .gte(fuelEfficiency.getMileage()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (fuelEfficiency.getFuelCapacity() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("fuelAndEfficiency.fuelCapacity").gte(fuelEfficiency.getFuelCapacity()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("fuelAndEfficiency.fuelCapacity")
+                                .gte(fuelEfficiency.getFuelCapacity()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (fuelEfficiency.getRange() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("fuelAndEfficiency.range").gte(fuelEfficiency.getRange()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("fuelAndEfficiency.range")
+                                .gte(fuelEfficiency.getRange()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
         }
 
-        // Add Performance filters
-        if (searchRequest.getPerformance() != null) {
-            CarSearchRequest.PerformanceDto performance = searchRequest.getPerformance();
+        // Performance filters
+        if (carSearchRequest.getPerformance() != null) {
+            CarSearchRequest.PerformanceDto performance = carSearchRequest.getPerformance();
             if (performance.getEngine() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("performance.engine", performance.getEngine()));
+                filters.add(Query.of(q -> q.term(t -> t.field("performance.engine").value(performance.getEngine()))));
             }
             if (performance.getHorsepower() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("performance.horsepower").gte(performance.getHorsepower()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("performance.horsepower")
+                                .gte(Double.valueOf(performance.getHorsepower())))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (performance.getTorque() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("performance.torque").gte(performance.getTorque()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("performance.torque")
+                                .gte(Double.valueOf(performance.getTorque())))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (performance.getTopSpeed() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("performance.topSpeed").gte(performance.getTopSpeed()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("performance.topSpeed")
+                                .gte(Double.valueOf(performance.getTopSpeed())))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (performance.getAcceleration() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("performance.acceleration").lte(performance.getAcceleration()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("performance.acceleration")
+                                .gte(performance.getAcceleration()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
         }
 
-        // Add Transmission and Drivetrain filters
-        if (searchRequest.getTransmissionAndDrivetrain() != null) {
-            CarSearchRequest.TransmissionAndDrivetrainDto transmission = searchRequest.getTransmissionAndDrivetrain();
+        // Transmission and Drivetrain filters
+        if (carSearchRequest.getTransmissionAndDrivetrain() != null) {
+            CarSearchRequest.TransmissionAndDrivetrainDto transmission = carSearchRequest.getTransmissionAndDrivetrain();
             if (transmission.getTransmission() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("transmissionAndDrivetrain.transmission", transmission.getTransmission()));
+                filters.add(Query.of(q -> q.term(t -> t.field("transmissionAndDrivetrain.transmission").value(transmission.getTransmission()))));
             }
             if (transmission.getDrivetrain() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("transmissionAndDrivetrain.drivetrain", transmission.getDrivetrain()));
+                filters.add(Query.of(q -> q.term(t -> t.field("transmissionAndDrivetrain.drivetrain").value(transmission.getDrivetrain()))));
             }
             if (transmission.getGearbox() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("transmissionAndDrivetrain.gearbox", transmission.getGearbox()));
+                filters.add(Query.of(q -> q.term(t -> t.field("transmissionAndDrivetrain.gearbox").value(transmission.getGearbox()))));
             }
         }
 
-        // Add Dimensions and Weight filters
-        if (searchRequest.getDimensionsAndWeight() != null) {
-            CarSearchRequest.DimensionsAndWeightDto dimensions = searchRequest.getDimensionsAndWeight();
+        // Dimensions and Weight filters
+        if (carSearchRequest.getDimensionsAndWeight() != null) {
+            CarSearchRequest.DimensionsAndWeightDto dimensions = carSearchRequest.getDimensionsAndWeight();
             if (dimensions.getLength() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("dimensionsAndWeight.length").gte(dimensions.getLength()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("dimensionsAndWeight.length")
+                                .gte(dimensions.getLength()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (dimensions.getWidth() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("dimensionsAndWeight.width").gte(dimensions.getWidth()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("dimensionsAndWeight.width")
+                                .gte(dimensions.getWidth()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (dimensions.getHeight() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("dimensionsAndWeight.height").gte(dimensions.getHeight()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("dimensionsAndWeight.height")
+                                .gte(dimensions.getHeight()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (dimensions.getWheelbase() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("dimensionsAndWeight.wheelbase").gte(dimensions.getWheelbase()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("dimensionsAndWeight.wheelbase")
+                                .gte(dimensions.getWheelbase()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (dimensions.getGroundClearance() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("dimensionsAndWeight.groundClearance").gte(dimensions.getGroundClearance()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("dimensionsAndWeight.groundClearance")
+                                .gte(dimensions.getGroundClearance()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
             if (dimensions.getCurbWeight() != null) {
-                boolQuery.filter(QueryBuilders.rangeQuery("dimensionsAndWeight.curbWeight").gte(dimensions.getCurbWeight()));
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("dimensionsAndWeight.curbWeight")
+                                .gte(dimensions.getCurbWeight()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
         }
 
-        // Add safety features filters
-        if (searchRequest.getSafetyFeatures() != null) {
-            CarSearchRequest.SafetyFeaturesDto s = searchRequest.getSafetyFeatures();
-            if (s.getSafetyRating() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("safetyFeatures.safetyRating", s.getSafetyRating()));
+        // Safety features filters
+        if (carSearchRequest.getSafetyFeatures() != null) {
+            CarSearchRequest.SafetyFeaturesDto safety = carSearchRequest.getSafetyFeatures();
+            if (safety.getSafetyRating() != null) {
+                filters.add(Query.of(q -> q.term(t -> t.field("safetyFeatures.safetyRating").value(safety.getSafetyRating()))));
             }
-            if (s.getAirbags() != null && s.getAirbags() > 0) {
-                boolQuery.filter(QueryBuilders.termQuery("safetyFeatures.airbags", s.getAirbags()));
+            if (safety.getAirbags() != null && safety.getAirbags() > 0) {
+                filters.add(Query.of(q -> q.term(t -> t.field("safetyFeatures.airbags").value(safety.getAirbags()))));
             }
-            if (s.getAbs() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("safetyFeatures.abs", s.getAbs()));
+            // Add similar term filters for other safety features
+        }
+
+        // EV specifications filters
+        if (carSearchRequest.getEvSpecifications() != null) {
+            CarSearchRequest.EVSpecificationsDto ev = carSearchRequest.getEvSpecifications();
+            if (ev.getBatteryCapacity() != null && ev.getBatteryCapacity() > 0) {
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("evSpecifications.batteryCapacity")
+                                .gte(ev.getBatteryCapacity()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
-            if (s.getTractionControl() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("safetyFeatures.tractionControl", s.getTractionControl()));
+            if (ev.getChargingTime() != null && ev.getChargingTime() > 0) {
+                Query byMaxPrice = RangeQuery.of(r -> r
+                        .number(n -> n
+                                .field("evSpecifications.chargingTime")
+                                .gte(ev.getChargingTime()))
+                )._toQuery();
+                filters.add(byMaxPrice);
             }
-            if (s.getLaneAssist() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("safetyFeatures.laneAssist", s.getLaneAssist()));
-            }
-            if (s.getBlindSpotMonitor() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("safetyFeatures.blindSpotMonitor", s.getBlindSpotMonitor()));
-            }
-            if (s.getAdaptiveCruiseControl() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("safetyFeatures.adaptiveCruiseControl", s.getAdaptiveCruiseControl()));
+            if (ev.getFastCharging() != null) {
+                filters.add(Query.of(q -> q.term(t -> t.field("evSpecifications.fastCharging").value(ev.getFastCharging()))));
             }
         }
 
-        // Add technology and comfort filters
-        if (searchRequest.getTechnologyAndComfort() != null) {
-            CarSearchRequest.TechnologyAndComfortDto t = searchRequest.getTechnologyAndComfort();
-            if (t.getInfotainmentSystem() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("technologyAndComfort.infotainmentSystem", t.getInfotainmentSystem()));
-            }
-            if (t.getClimateControl() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("technologyAndComfort.climateControl", t.getClimateControl()));
-            }
-            if (t.getHeatedSeats() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("technologyAndComfort.heatedSeats", t.getHeatedSeats()));
-            }
-            if (t.getSunroof() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("technologyAndComfort.sunroof", t.getSunroof()));
-            }
-            if (t.getParkingAssist() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("technologyAndComfort.parkingAssist", t.getParkingAssist()));
-            }
-            if (t.getHeadUpDisplay() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("technologyAndComfort.headUpDisplay", t.getHeadUpDisplay()));
-            }
-        }
+        // Construct BoolQuery with all filters
+        Query boolQuery = Query.of(b -> b.bool(BoolQuery.of(bq -> bq.filter(filters))));
 
-        // Add EV specifications filters
-        if (searchRequest.getEvSpecifications() != null) {
-            CarSearchRequest.EVSpecificationsDto e = searchRequest.getEvSpecifications();
-            if (e.getBatteryCapacity() != null && e.getBatteryCapacity() > 0) {
-                boolQuery.filter(QueryBuilders.rangeQuery("evSpecifications.batteryCapacity").gte(e.getBatteryCapacity()));
-            }
-            if (e.getChargingTime() != null && e.getChargingTime() > 0) {
-                boolQuery.filter(QueryBuilders.rangeQuery("evSpecifications.chargingTime").lte(e.getChargingTime()));
-            }
-            if (e.getFastCharging() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("evSpecifications.fastCharging", e.getFastCharging()));
-            }
-            if (e.getRegenerativeBraking() != null) {
-                boolQuery.filter(QueryBuilders.termQuery("evSpecifications.regenerativeBraking", e.getRegenerativeBraking()));
-            }
-        }
+        // Create SearchRequest and execute search
+    SearchRequest searchRequest = SearchRequest.of(s -> s
+            .index("cars")
+            .query(boolQuery)
+            .size(100) // Customize size if needed
+    );
+        SearchResponse<JsonData> response = elasticsearchClient.search(searchRequest, JsonData.class);
+        List<Car> carList = response.hits().hits().stream()
+                .map(this::mapHitToCar)
+                .collect(Collectors.toList());
 
-        // Build the query with filters and pagination
-        NativeQuery searchQuery = NativeQuery.builder()
-                .withQuery((Query) boolQuery)
-                .withPageable(PageRequest.of(0, 10)) // Pagination
-                .build();
+        return carList;
+    }
 
-        // Execute the query
-        return restHighLevelClient.search(searchQuery);
+    private Car mapHitToCar(Hit<JsonData> hit) {
+            try {
+                // Convert JsonData to String and deserialize to Car
+                String json = String.valueOf(hit.source().toJson()); // Get JSON string from JsonData
+                return objectMapper.readValue(json, Car.class); // Deserialize to Car
+            } catch (Exception e) {
+                // Log the error with the original JSON for debugging
+                System.err.println("Failed to map hit to Car: " + e.getMessage());
+                System.err.println("Original JSON: " + hit.source().toJson());
+                e.printStackTrace(); // Print stack trace for detailed error information
+                throw new RuntimeException("Failed to map hit to Car", e);
+            }
     }
 }

@@ -1,8 +1,11 @@
 package com.example.cars.service.search;
 
 import com.example.cars.dto.CarSearchRequest;
-import org.elasticsearch.action.search.SearchResponse;
+import com.example.cars.model.Car;
+
+import java.io.IOException;
+import java.util.List;
 
 public interface ICarSearchService {
-    public SearchResponse searchCars(CarSearchRequest searchRequest);
+   public List<Car> searchCars(CarSearchRequest searchRequest) throws IOException;
 }

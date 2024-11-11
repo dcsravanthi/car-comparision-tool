@@ -1,5 +1,6 @@
 package com.example.cars.controller;
 
+import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.example.cars.model.Car;
 import com.example.cars.service.similarity.ISimilarity;
 import org.springframework.beans.factory.annotation.Autowired;
